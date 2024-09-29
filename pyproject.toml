@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mobis_dev"
+version = "0.0.1"
+description = "Autonomous parking project"
+authors = [
+    { name = "John Viljoen", email = "johnviljoen2@gmail.com" }
+]
+readme = "README.md"
+
+dependencies = [
+    "wandb",
+    "pyrallis",
+    "python-box",
+    ""
+]
+
+[tool.setuptools.packages.find]
+where = [
+    ".", 
+    "algorithms",
+    "baselines",
+]  # list of folders that contain the packages (["."] by default)
