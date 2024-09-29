@@ -73,6 +73,13 @@ poetry install
 
 Now you have a working installation of GPUDrive, but it is not yet setup to be debuggable and editable from VSCode.
 
+## Install dependencies for IPPO baseline
+
+```bash
+cd /home
+pip install -e .
+```
+
 ## (optional but recommended) local vscode setup
 
 NOTE: that if you want to do remote code running and creation via ssh you will need to setup the system to also work locally as is shown here.
