@@ -1,4 +1,7 @@
-# installation via docker (most robust)
+# installation
+
+<details>
+  <summary>Docker installation (most robust)</summary>
 
 ## Supported Platforms
 
@@ -116,7 +119,10 @@ This is a rather simple extension if we have already setup the local vscode inst
 - you should have a remote VSCode instance within the container within the server ready to go!
 - (optional) install the python development packages within the remote container vscode, lets you use conda environments nicely inside the container
 
-# annoyances
+</details>
+
+<details>
+  <summary>Annoyances</summary>
 
 ## UID/GID misalignment with host
 
@@ -139,3 +145,11 @@ docker run gpudrive_container
 docker exec -it something something I cant remember
 ```
 
+</details>
+
+
+# Run IPPO
+
+```bash
+python baselines/ippo/run_sb3_ppo.py
+```
