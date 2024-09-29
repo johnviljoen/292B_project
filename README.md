@@ -1,29 +1,134 @@
+# installation via docker (most robust)
+
+## Supported Platforms
+
+- Linux, Ubuntu 20.04 or newer
+
+## General Dependencies
+
+- CMake 3.24 or newer
+- Python 3.9 or newer
+- CUDA 12.2 or newer
+
+## (Optional) for Madrona Viewer 
+
+sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev mesa-common-dev libc++1
+
+## Docker dependencies
+- [install docker-ce](https://docs.docker.com/engine/install/ubuntu/)
+- [install nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (A problem I ran into required: sudo vim /etc/nvidia-container-runtime/config.toml in here change no-cgroups to false)
+
 # installation steps
 
-install docker-ce
+## Create a workspace
 
-install nvidia-container-toolkit
-
-sudo nvim /etc/nvidia-container-runtime/config.toml in here change no-cgroups to false
-
-# vscode setup
+This will be mounted in the docker container so we can run it from within the container later.
 
 ```bash
-cd ~/Documents # move Documents
-mkdir gpudrive_dev
+mkdir ~/Documents/gpudrive_dev
+```
+
+## Get the Waymo datasets
+
+- Create a Datasets directory in your /home/${USER}
+
+```bash
+mkdir ~/Datasets
+```
+
+- Download the [mini dataset](https://www.dropbox.com/sh/8mxue9rdoizen3h/AADGRrHYBb86pZvDnHplDGvXa?dl=0)
+- (Optional but recommended) Download the [large dataset](https://www.dropbox.com/sh/wv75pjd8phxizj3/AABfNPWfjQdoTWvdVxsAjUL_a?dl=0)
+
+- unzip the files into ~/Datasets/ such that ~/Datasets follows the structure:
+
+```bash
+.
+├── nocturne
+│   ├── formatted_json_v2_no_tl_train
+│   └── formatted_json_v2_no_tl_valid
+└── nocturne_mini
+    ├── formatted_json_v2_no_tl_train
+    └── formatted_json_v2_no_tl_valid
+```
+
+## Pull the image and run the container
+
+```bash
+docker pull ghcr.io/emerge-lab/gpudrive:latest
+```
+
+## Create the container and run it
+
+```bash
 docker run -v ~/Documents/gpudrive_dev:/home -v ~/Datasets:/mnt --gpus all -it --name gpudrive_container ghcr.io/emerge-lab/gpudrive:latest
 ```
-This should create a workspace called gpudrive_dev (feel free change name) in your Documents, and then run the docker image and mount that workspace in /home directory of the container (-v ~/Documents/gpudrive_dev:~) and mount my datasets in /home as well -v ~/Datasets:/home. As well as pass gpus through (--gpus all) and make it interactive (-it), name the container gpudrive_container, and specify the image we are using is ghcr.io/emerge-lab/gpudrive:latest
 
-This annoyingly doesnt assign the same UID and GID in the container as the host ubuntu system in my case, meaning that I need to chown the files created within the container to be writable outside of the container. To change this we need to change the dockerfile from the authors - I will ask them on monday.
+## Build GPUDrive
 
-- then you should quit the interactive terminal that the docker run produced
-- then you should run the docker container from the docker extension in a window in vscode (or run docker run gpudrive_container)
-- then you should attach to the running container from vscode
-- then you should install the python development extensions in the connected instance to the container
-- then you should run poetry install in /gpudrive in the container
+From within the running container you have just created
 
-# git setup
+```bash
+poetry install
+```
 
-- need ssh installed for ssh pushes and so on: apt-get install openssh-client (after apt get update)
+Now you have a working installation of GPUDrive, but it is not yet setup to be debuggable and editable from VSCode.
+
+## (optional but recommended) local vscode setup
+
+NOTE: that if you want to do remote code running and creation via ssh you will need to setup the system to also work locally as is shown here.
+
+### Required extensions
+
+- install docker extension
+- install dev containers extension
+
+### Running the container
+
+- click the docker logo in the left hand side
+- under containers, right click ghcr.io/emerge-lab/gpudrive:latest
+- if it is not running, select start
+- once/if it is running, right click on it again
+- select attach visual studio code
+
+This will generate a new VSCode window that is attached in a similar manner to SSH but inside the container.
+
+You should notice that the gpudrive_dev directory we created earlier is mounted within the /home directory of the container itself, and that the gpudrive conda environment is automatically activate, and that we have already built gpudrive, so we are now ready to go!
+
+- (optional) install the python development packages within the container connected vscode, lets you use conda environments nicely inside the container
+
+## (optional but recommended) remote vscode
+
+This is a rather simple extension if we have already setup the local vscode instance with the docker container inside it. 
+
+- install the necessary extensions for remote ssh
+- install the dev-containers extension here as well (unsure if necessary, but I have it)
+- ssh connect to the remote server with the container
+- ensure that the docker and dev-container extensions are also installed on the server
+- start the container as previously shown
+- attach the container as previously shown
+- you should have a remote VSCode instance within the container within the server ready to go!
+- (optional) install the python development packages within the remote container vscode, lets you use conda environments nicely inside the container
+
+# annoyances
+
+## UID/GID misalignment with host
+
+This dockerfile annoyingly doesn't assign the same UID and GID in the container as the host ubuntu system in my case, meaning that I need to chown the files created within the container to be writable outside of the container. To change this we need to change the dockerfile from the authors - I will ask them on monday.
+
+## Github setup
+
+to push to github via ssh we need to install the ssh client in the container, this could be done in the dockerfile:
+
+```bash
+apt-get install openssh-client (after apt get update)
+```
+
+# alternative interactions with container
+
+You can also get into the container via terminal to check things quickly from the machine hosting the container.
+
+```bash
+docker run gpudrive_container
+docker exec -it something something I cant remember
+```
 

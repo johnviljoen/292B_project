@@ -6,6 +6,9 @@ redundant
 .vscode-server
 .gitconfig
 
+wandb
+runs
+
 # Mujoco
 MUJOCO_LOG.TXT
 

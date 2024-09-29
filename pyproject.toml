@@ -15,7 +15,8 @@ dependencies = [
     "wandb",
     "pyrallis",
     "python-box",
-    ""
+    "wandb[media]",
+    "imageio",
 ]
 
 [tool.setuptools.packages.find]
