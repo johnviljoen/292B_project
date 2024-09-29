@@ -4,6 +4,7 @@ redundant
 
 .gnupg
 .vscode-server
+.gitconfig
 
 # Mujoco
 MUJOCO_LOG.TXT
