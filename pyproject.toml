@@ -17,6 +17,7 @@ dependencies = [
     "python-box",
     "wandb[media]",
     "imageio",
+    "networks"
 ]
 
 [tool.setuptools.packages.find]

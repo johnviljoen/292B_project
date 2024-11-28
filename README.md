@@ -83,6 +83,11 @@ cd /home
 pip install -e .
 ```
 
+## Final Steps
+
+- You will need to sort some stuff out which isnt installed, ffpeg, imageio, imageio-ffmpeg, moviepy, wandb\[media\] and so on
+- downgrad moviepy to 1.0.3 (definitely less than 2.0)
+
 ## (optional but recommended) local vscode setup
 
 NOTE: that if you want to do remote code running and creation via ssh you will need to setup the system to also work locally as is shown here.
@@ -153,3 +158,4 @@ docker exec -it something something I cant remember
 ```bash
 python baselines/ippo/run_sb3_ppo.py
 ```
+

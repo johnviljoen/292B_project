@@ -82,7 +82,7 @@ def train(exp_config: ExperimentConfig, scene_config: SceneConfig):
         n_steps=exp_config.n_steps,
         batch_size=exp_config.batch_size,
         env=env,
-        seed=exp_config.seed,
+        seed=exp_config.seed+2,
         verbose=exp_config.verbose,
         device=exp_config.device,
         tensorboard_log=f"runs/{run_id}"

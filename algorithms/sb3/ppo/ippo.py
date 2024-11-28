@@ -55,6 +55,177 @@ class IPPO(PPO):
         self.mlp_config = mlp_config
         super().__init__(*args, **kwargs)
 
+    def collect_rollouts_a_vs_b(
+        self,
+        env: VecEnv,
+        callback: BaseCallback,
+        rollout_buffer: MaskedRolloutBuffer,
+        n_rollout_steps: int,
+        policy_b, # : ActorCriticPolicy,
+        policy_a_agent_indices: list[int],
+    ) -> bool:
+        """Collect rollouts using two different policies."""
+
+        assert self._last_obs is not None, "No previous observation was provided"
+        # Switch to eval mode (this affects batch norm / dropout)
+        self.policy.set_training_mode(False)
+        policy_b.set_training_mode(False)
+
+        n_steps = 0
+        rollout_buffer.reset()
+        # Sample new weights for the state dependent exploration
+        if self.use_sde:
+            self.policy.reset_noise(env.num_envs)
+            policy_b.reset_noise(env.num_envs)
+
+        callback.on_rollout_start()
+
+        time_rollout = time.perf_counter()
+
+        while n_steps < n_rollout_steps:
+            if (
+                self.use_sde
+                and self.sde_sample_freq > 0
+                and n_steps % self.sde_sample_freq == 0
+            ):
+                # Sample a new noise matrix
+                self.policy.reset_noise(env.num_envs)
+                policy_b.reset_noise(env.num_envs)
+
+            with torch.no_grad():
+                obs_tensor = self._last_obs
+
+                # Create dummy actions, values, and log_probs (NaN)
+                actions = torch.full(
+                    fill_value=float("nan"), size=(self.n_envs,)
+                ).to(self.device)
+                log_probs = torch.full(
+                    fill_value=float("nan"),
+                    size=(self.n_envs,),
+                    dtype=torch.float32,
+                ).to(self.device)
+                values = (
+                    torch.full(
+                        fill_value=float("nan"),
+                        size=(self.n_envs,),
+                        dtype=torch.float32,
+                    )
+                    .unsqueeze(dim=1)
+                    .to(self.device)
+                )
+
+                # Get indices of alive agents
+                alive_agent_mask = ~(
+                    env.dead_agent_mask[env.controlled_agent_mask].reshape(
+                        self.n_envs, 1
+                    )
+                ).squeeze(dim=1)
+
+                # Create masks for agents using policy A and policy B
+                policy_a_agent_mask = torch.zeros(
+                    self.n_envs, dtype=torch.bool, device=self.device
+                )
+                policy_a_agent_mask[policy_a_agent_indices] = True
+                policy_b_agent_mask = ~policy_a_agent_mask
+
+                # Create masks for alive agents using policy A and policy B
+                alive_and_policy_a_mask = alive_agent_mask & policy_a_agent_mask
+                alive_and_policy_b_mask = alive_agent_mask & policy_b_agent_mask
+
+                # Select observations for alive agents using policy A
+                obs_tensor_policy_a = obs_tensor[alive_and_policy_a_mask]
+                obs_tensor_policy_b = obs_tensor[alive_and_policy_b_mask]
+
+                # Compute actions, values, log_probs for policy A agents
+                time_actions = time.perf_counter()
+                if obs_tensor_policy_a.shape[0] > 0:
+                    actions_a, values_a, log_probs_a = self.policy(obs_tensor_policy_a)
+                else:
+                    actions_a, values_a, log_probs_a = None, None, None
+
+                # Compute actions, values, log_probs for policy B agents
+                if obs_tensor_policy_b.shape[0] > 0:
+                    actions_b, values_b, log_probs_b = policy_b(obs_tensor_policy_b)
+                else:
+                    actions_b, values_b, log_probs_b = None, None, None
+
+                # Measure time for action computation
+                nn_fps = (
+                    (0 if actions_a is None else actions_a.shape[0])
+                    + (0 if actions_b is None else actions_b.shape[0])
+                ) / (time.perf_counter() - time_actions)
+                self.logger.record("rollout/nn_fps", nn_fps)
+
+                # Assign actions, values, log_probs to the overall tensors
+                if actions_a is not None:
+                    actions[alive_and_policy_a_mask] = actions_a.float()
+                    values[alive_and_policy_a_mask] = values_a.float()
+                    log_probs[alive_and_policy_a_mask] = log_probs_a.float()
+                if actions_b is not None:
+                    actions[alive_and_policy_b_mask] = actions_b.float()
+                    values[alive_and_policy_b_mask] = values_b.float()
+                    log_probs[alive_and_policy_b_mask] = log_probs_b.float()
+
+            # Rescale and perform action
+            clipped_actions = actions
+
+            if isinstance(self.action_space, spaces.Box):
+                if self.policy.squash_output:
+                    # Unscale the actions to match env bounds
+                    clipped_actions = self.policy.unscale_action(clipped_actions)
+                else:
+                    # Clip the actions to avoid out of bound error
+                    clipped_actions = torch.clamp(
+                        actions, self.action_space.low, self.action_space.high
+                    )
+
+            new_obs, rewards, dones, infos = env.step(clipped_actions)
+
+            # Increment the global step by the number of valid samples
+            self.num_timesteps += int((~rewards.isnan()).float().sum().item())
+
+            # Give access to local variables
+            callback.update_locals(locals())
+            if callback.on_step() is False:
+                return False
+            n_steps += 1
+
+            if isinstance(self.action_space, spaces.Discrete):
+                # Reshape in case of discrete action
+                actions = actions.reshape(-1, 1)
+
+            rollout_buffer.add(
+                self._last_obs,  # type: ignore[arg-type]
+                actions,
+                rewards,
+                torch.Tensor(self._last_episode_starts),  # type: ignore[arg-type]
+                values,
+                log_probs,
+            )
+            self._last_obs = new_obs  # type: ignore[assignment]
+            self._last_episode_starts = dones
+
+        # END OF ROLLOUT LOOP
+
+        total_steps = self.n_envs * n_rollout_steps
+        elapsed_time = time.perf_counter() - time_rollout
+        fps = total_steps / elapsed_time
+        self.logger.record("charts/fps", fps)
+
+        with torch.no_grad():
+            # Compute value for the last timestep
+            values = self.policy.predict_values(new_obs)  # type: ignore[arg-type]
+
+        rollout_buffer.compute_returns_and_advantage(
+            last_values=values, dones=dones
+        )
+
+        callback.update_locals(locals())
+        callback.on_rollout_end()
+
+        return True
+
+
     def collect_rollouts(
         self,
         env: VecEnv,
