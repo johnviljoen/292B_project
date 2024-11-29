@@ -10,13 +10,17 @@ from pygpudrive.env.config import EnvConfig, RenderConfig, SceneConfig
 from pygpudrive.env.env_torch import GPUDriveTorchEnv
 from algorithms.sb3.ppo.ippo import IPPO
 from tqdm import tqdm
+import os
+import re
+from collections import defaultdict
 
 # CONFIGURE
 TOTAL_STEPS = 90
 MAX_CONTROLLED_AGENTS = 128
-NUM_WORLDS = 50 # 50
+NUM_WORLDS = 3 # 50
 NUM_ROLLOUTS_PER_POLICY_PAIR = 100
 device = torch.device('cuda')
+saved_policies_dir = "saved_policies"
 
 env_config = EnvConfig(dynamics_model="classic")
 render_config = RenderConfig()
@@ -205,32 +209,70 @@ def rollout(policy_a, policy_b):
 # policies
 policy_a = IPPO.load("wandb/run-20241123_105439-gpudrive_11_23_10_38_3scenes/files/policy_10021031.zip", device=device)
 
-policy_bx = [
-    IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_18854.zip", device=device),
-    IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_1781326.zip", device=device),
-    IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_3936818.zip", device=device),
-    IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_6330063.zip", device=device),
-    IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_8780169.zip", device=device),
-    IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_10013074.zip", device=device),
-]
+# read the policies filenames
+# Pattern to match the policy filenames (e.g., policy_seed_x_timestep_y.zip)
+pattern = re.compile(r"policy_seed_(\d+)_timestep_(\d+)\.zip")
+
+# Dictionary to group policies by seed
+policies_by_seed = defaultdict(list)
+
+# Iterate through all files in the directory
+for filename in os.listdir(saved_policies_dir):
+    match = pattern.match(filename)
+    if match:
+        # Extract seed and timestep from the filename
+        seed = int(match.group(1))
+        timestep = int(match.group(2))
+        
+        # Store the full path of the policy
+        policy_path = os.path.join(saved_policies_dir, filename)
+        policies_by_seed[seed].append((timestep, policy_path))
+
+# Load policies for each seed into lists
+loaded_policies = {}
+for seed, policies in policies_by_seed.items():
+    # Sort policies by timestep (optional, if order matters)
+    policies.sort(key=lambda x: x[0])
+    
+    # Load the policies into a list
+    loaded_policies[f"policy_b{seed}"] = [
+        IPPO.load(policy_path, device=device) for _, policy_path in policies
+    ]
+
+
+# policy_bx = [
+#     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_18854.zip", device=device),
+#     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_1781326.zip", device=device),
+#     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_3936818.zip", device=device),
+#     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_6330063.zip", device=device),
+#     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_8780169.zip", device=device),
+#     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_10013074.zip", device=device),
+# ]
 
 start = 0
 end = NUM_ROLLOUTS_PER_POLICY_PAIR
 num_bins = 50
 
-policy_pair_reward = []
+policy_seed_pair_reward = []
 
-for policy_b in tqdm(policy_bx):
+for i, policy_bx in enumerate(loaded_policies.values()):
 
-    policy_a_reward = []
+    print(f"running policies based on seed {i}")
+    policy_pair_reward = []
 
-    for i in tqdm(range(NUM_ROLLOUTS_PER_POLICY_PAIR)):
+    for policy_b in tqdm(policy_bx):
 
-        _policy_a_reward = rollout(policy_a, policy_b)
-        policy_a_reward.append(_policy_a_reward)
+        policy_a_reward = []
 
-    policy_a_reward = torch.vstack(policy_a_reward)
+        for i in tqdm(range(NUM_ROLLOUTS_PER_POLICY_PAIR)):
 
-    policy_pair_reward.append(copy.copy(policy_a_reward))
+            _policy_a_reward = rollout(policy_a, policy_b)
+            policy_a_reward.append(_policy_a_reward)
+
+        policy_a_reward = torch.vstack(policy_a_reward)
+        policy_pair_reward.append(copy.copy(policy_a_reward))
+
+    policy_pair_reward = torch.stack(policy_pair_reward)
+    policy_seed_pair_reward.append(copy.copy(policy_pair_reward))
 
 env.close()
