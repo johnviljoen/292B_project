@@ -228,6 +228,8 @@ class MultiAgentCallback(BaseCallback):
             self.policy_base_path, f"policy_{self.num_timesteps}.zip"
         )
         self.model.save(path)
+        # added by john to save in another location as well
+        self.model.save(f"saved_policies/policy_seed_{self.config.seed}_timestep_{self.num_timesteps}.zip")
         if self.wandb_run is not None:
             wandb.save(path, base_path=self.policy_base_path)
         print(f"Saved policy on step {self.num_timesteps:,} at: {path}")

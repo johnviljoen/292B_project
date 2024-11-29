@@ -9,14 +9,14 @@ class ExperimentConfig:
     """Configurations for experiments."""
 
     # DATASET
-    data_dir: str = "/mnt/nocturne_mini/formatted_json_v2_no_tl_train/formatted_json_v2_no_tl_train"
+    data_dir: str = "/mnt/nocturne/formatted_json_v2_no_tl_train" # /formatted_json_v2_no_tl_train" # add last bit for the nocture mini
 
     # NUM PARALLEL ENVIRONMENTS & DEVICE
     num_worlds: int = 50 # 50  # Number of parallel environments # my computer can handle 40
 
     # How to select scenes from the dataset
     selection_discipline = SelectionDiscipline.K_UNIQUE_N  # K_UNIQUE_N / PAD_N
-    k_unique_scenes: int = 3
+    k_unique_scenes: int = 3 # 3
     device: str = "cuda"  # or "cpu"
 
     # Set the weights for the reward components
@@ -57,7 +57,7 @@ class ExperimentConfig:
     save_policy_freq: int = 100
 
     # HYPERPARAMETERS
-    seed: int = 42
+    seed: int = 1 # 42
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2

@@ -82,7 +82,7 @@ def train(exp_config: ExperimentConfig, scene_config: SceneConfig):
         n_steps=exp_config.n_steps,
         batch_size=exp_config.batch_size,
         env=env,
-        seed=exp_config.seed+2,
+        seed=exp_config.seed,
         verbose=exp_config.verbose,
         device=exp_config.device,
         tensorboard_log=f"runs/{run_id}"
@@ -113,7 +113,36 @@ def train(exp_config: ExperimentConfig, scene_config: SceneConfig):
 
 if __name__ == "__main__":
 
+    import json
+    import os
+    from dataclasses import asdict, dataclass, fields, is_dataclass
+    from enum import Enum
+
+    # Helper function to handle enums and skip unwanted fields
+    def dataclass_to_serializable(dataclass_instance):
+        if not is_dataclass(dataclass_instance):
+            raise ValueError("Provided instance is not a dataclass")
+        
+        # Convert dataclass to a dictionary
+        data_dict = asdict(dataclass_instance)
+
+        # Iterate through fields and handle enums
+        for field in fields(dataclass_instance):
+            value = getattr(dataclass_instance, field.name)
+            if isinstance(value, Enum):
+                # Replace enum with its value
+                data_dict[field.name] = value.value
+        
+        return data_dict
+
     exp_config = pyrallis.parse(config_class=ExperimentConfig)
+
+    # save experiment config
+    exp_config_dict = dataclass_to_serializable(exp_config)
+
+    # Write the JSON file
+    with open("saved_policies/exp_config.json", "w") as json_file:
+        json.dump(exp_config_dict, json_file, indent=4)
 
     scene_config = SceneConfig(
         path=exp_config.data_dir,
@@ -122,4 +151,30 @@ if __name__ == "__main__":
         k_unique_scenes=exp_config.k_unique_scenes,
     )
 
-    train(exp_config, scene_config)
+    # save scene config
+    scene_config_dict = dataclass_to_serializable(scene_config)
+
+    with open("saved_policies/scene_config.json", "w") as json_file:
+        json.dump(scene_config_dict, json_file, indent=4)
+
+    NUM_SEEDS = 3
+
+    for i in range(NUM_SEEDS):
+
+        print(f"training with seed {exp_config.seed}...")
+        train(exp_config, scene_config)
+        print(f"done training seed {exp_config.seed}")
+
+        exp_config.seed += 1
+
+    
+
+    
+
+    
+
+
+
+
+
+
