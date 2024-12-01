@@ -4,8 +4,10 @@ from scipy.special import rel_entr
 row_rewards = np.load("saved_inferences/policy_a_rewards.npy")
 
 start = 0
-end = 100
-num_bins = 50
+end = 1
+num_bins = 2
+
+row_rewards = row_rewards[-1][-1][:,0] # a single set of rollouts for a single world using the most trained opponent we have
 
 total_rewards = row_rewards.flatten()
 marginal_hist, marginal_bin_edges = np.histogram(total_rewards, bins=num_bins, range=(start, end))

@@ -150,9 +150,12 @@ def rollout(policy_a, policy_b, render=False, save_name=None):
     done = env.get_dones()
 
     agent_a_index = []
+    agent_b_index = []
     for i in range(NUM_WORLDS):
         index_first_zero = torch.nonzero(done[i] == 0, as_tuple=True)[0][0]
         agent_a_index.append(index_first_zero.item())
+        index_rest = torch.nonzero(done[i] == 0, as_tuple=True)[0][1:]
+        agent_b_index.append(index_rest)
 
     done = torch.zeros([NUM_WORLDS, MAX_CONTROLLED_AGENTS], device=device)
     frames1 = []
@@ -160,6 +163,7 @@ def rollout(policy_a, policy_b, render=False, save_name=None):
     frames3 = []
 
     policy_a_reward = torch.zeros([NUM_WORLDS], device=device)
+    policy_b_reward = torch.zeros([NUM_WORLDS], device=device)
     for i in range(TOTAL_STEPS):
         # print(f"Step: {i}")
 
@@ -205,6 +209,8 @@ def rollout(policy_a, policy_b, render=False, save_name=None):
         reward = env.get_rewards()
         for j in range(NUM_WORLDS):
             policy_a_reward[j] += reward[j,agent_a_index[j]]
+            policy_b_reward[j] += torch.mean(reward[j][agent_b_index[j]])
+
         done = env.get_dones()
 
     # import imageio
@@ -213,7 +219,7 @@ def rollout(policy_a, policy_b, render=False, save_name=None):
         imageio.mimsave(save_name + "_world_2.gif", np.array(frames2))
         imageio.mimsave(save_name + "_world_3.gif", np.array(frames3))
 
-    return policy_a_reward
+    return policy_a_reward, policy_b_reward
 
 # policies
 policy_a = IPPO.load("wandb/run-20241123_105439-gpudrive_11_23_10_38_3scenes/files/policy_10021031.zip", device=device)
@@ -262,32 +268,42 @@ end = NUM_ROLLOUTS_PER_POLICY_PAIR
 num_bins = 50
 
 policy_seed_pair_reward = []
+policy_seed_pair_reward_b = []
 
 for i, policy_bx in enumerate(loaded_policies.values()):
 
     print(f"running policies based on seed {i}")
     policy_pair_reward = []
+    policy_pair_reward_b = []
 
     for j, policy_b in tqdm(enumerate(policy_bx)):
 
         policy_a_reward = []
+        policy_b_reward = []
 
         for k in tqdm(range(NUM_ROLLOUTS_PER_POLICY_PAIR)):
 
             if k == 0:
-                _policy_a_reward = rollout(policy_a, policy_b, render=True, save_name=f"saved_inferences/policy_b_{i}_{j}") # refers to the ith trained policies jth checkpoint
+                _policy_a_reward, _policy_b_reward = rollout(policy_a, policy_b, render=True, save_name=f"saved_inferences/policy_b_{i}_{j}") # refers to the ith trained policies jth checkpoint
             else:
-                _policy_a_reward = rollout(policy_a, policy_b)
+                _policy_a_reward, _policy_b_reward = rollout(policy_a, policy_b)
             policy_a_reward.append(_policy_a_reward)
+            policy_b_reward.append(_policy_b_reward)
 
         policy_a_reward = torch.stack(policy_a_reward)
+        policy_b_reward = torch.stack(policy_b_reward)
         policy_pair_reward.append(copy.copy(policy_a_reward))
+        policy_pair_reward_b.append(copy.copy(policy_b_reward))
 
     policy_pair_reward = torch.stack(policy_pair_reward)
+    policy_pair_reward_b = torch.stack(policy_pair_reward_b)
     policy_seed_pair_reward.append(copy.copy(policy_pair_reward))
+    policy_seed_pair_reward_b.append(copy.copy(policy_pair_reward_b))
 
 policy_seed_pair_reward = torch.stack(policy_seed_pair_reward)
+policy_seed_pair_reward_b = torch.stack(policy_seed_pair_reward_b)
 
 np.save("saved_inferences/policy_a_rewards", policy_seed_pair_reward.detach().cpu().numpy())
+np.save("saved_inferences/policy_b_rewards", policy_seed_pair_reward_b.detach().cpu().numpy())
 
 env.close()
