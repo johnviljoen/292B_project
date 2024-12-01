@@ -144,7 +144,7 @@ def policy_inference(policy, obs, done):
 
     return world_actions
 
-def rollout(policy_a, policy_b):
+def rollout(policy_a, policy_b, render=False, save_name=None):
     # RUN
     obs = env.reset()
     done = env.get_dones()
@@ -155,7 +155,9 @@ def rollout(policy_a, policy_b):
         agent_a_index.append(index_first_zero.item())
 
     done = torch.zeros([NUM_WORLDS, MAX_CONTROLLED_AGENTS], device=device)
-    frames = []
+    frames1 = []
+    frames2 = []
+    frames3 = []
 
     policy_a_reward = torch.zeros([NUM_WORLDS], device=device)
     for i in range(TOTAL_STEPS):
@@ -193,7 +195,11 @@ def rollout(policy_a, policy_b):
         # Step the environment
         env.step_dynamics(acts)
 
-        frames.append(env.render(world_render_idx=0))
+        if render is True:
+
+            frames1.append(env.render(world_render_idx=0))
+            frames2.append(env.render(world_render_idx=1))
+            frames3.append(env.render(world_render_idx=2))
 
         obs = env.get_obs()
         reward = env.get_rewards()
@@ -202,7 +208,10 @@ def rollout(policy_a, policy_b):
         done = env.get_dones()
 
     # import imageio
-    imageio.mimsave("world1.gif", np.array(frames))
+    if render is True:
+        imageio.mimsave(save_name + "_world_1.gif", np.array(frames1))
+        imageio.mimsave(save_name + "_world_2.gif", np.array(frames2))
+        imageio.mimsave(save_name + "_world_3.gif", np.array(frames3))
 
     return policy_a_reward
 
@@ -231,14 +240,13 @@ for filename in os.listdir(saved_policies_dir):
 # Load policies for each seed into lists
 loaded_policies = {}
 for seed, policies in policies_by_seed.items():
-    # Sort policies by timestep (optional, if order matters)
+    # Sort policies by timestep
     policies.sort(key=lambda x: x[0])
     
     # Load the policies into a list
     loaded_policies[f"policy_b{seed}"] = [
         IPPO.load(policy_path, device=device) for _, policy_path in policies
     ]
-
 
 # policy_bx = [
 #     IPPO.load("wandb/run-20241123_101909-gpudrive_11_23_10_09_3scenes/files/policy_18854.zip", device=device),
@@ -260,19 +268,26 @@ for i, policy_bx in enumerate(loaded_policies.values()):
     print(f"running policies based on seed {i}")
     policy_pair_reward = []
 
-    for policy_b in tqdm(policy_bx):
+    for j, policy_b in tqdm(enumerate(policy_bx)):
 
         policy_a_reward = []
 
-        for i in tqdm(range(NUM_ROLLOUTS_PER_POLICY_PAIR)):
+        for k in tqdm(range(NUM_ROLLOUTS_PER_POLICY_PAIR)):
 
-            _policy_a_reward = rollout(policy_a, policy_b)
+            if k == 0:
+                _policy_a_reward = rollout(policy_a, policy_b, render=True, save_name=f"saved_inferences/policy_b_{i}_{j}") # refers to the ith trained policies jth checkpoint
+            else:
+                _policy_a_reward = rollout(policy_a, policy_b)
             policy_a_reward.append(_policy_a_reward)
 
-        policy_a_reward = torch.vstack(policy_a_reward)
+        policy_a_reward = torch.stack(policy_a_reward)
         policy_pair_reward.append(copy.copy(policy_a_reward))
 
     policy_pair_reward = torch.stack(policy_pair_reward)
     policy_seed_pair_reward.append(copy.copy(policy_pair_reward))
+
+policy_seed_pair_reward = torch.stack(policy_seed_pair_reward)
+
+np.save("saved_inferences/policy_a_rewards", policy_seed_pair_reward.detach().cpu().numpy())
 
 env.close()

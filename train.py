@@ -46,7 +46,7 @@ with open("saved_policies/scene_config.json", "w") as json_file:
     json.dump(scene_config_dict, json_file, indent=4)
 
 NUM_SEEDS = 3
-exp_config.seed += 0
+exp_config.seed += -1
 
 for i in range(NUM_SEEDS):
 
@@ -55,3 +55,5 @@ for i in range(NUM_SEEDS):
     print(f"done training seed {exp_config.seed}")
 
     exp_config.seed += 1
+
+    
